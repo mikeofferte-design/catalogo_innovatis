@@ -496,23 +496,26 @@ body.has-cart .catalog{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
 .close-btn{width:40px;height:40px;flex-basis:40px;touch-action:manipulation}
 @media(max-width:699px){
   .toolbar-shell.is-measured{
-    box-sizing:content-box;
-    height:var(--toolbar-visible-height);
-    overflow:hidden;
+    overflow:visible;
     transform:none;
-    border-bottom-width:var(--toolbar-border-width);
-    transition:none
+    background:transparent;
+    border-bottom:0;
+    transition:none;
+    pointer-events:none
   }
   .toolbar-shell.is-measured.is-hidden{
     height:0;
     transform:none;
-    border-bottom-width:0
+    overflow:hidden
   }
   .toolbar-shell.is-measured .toolbar{
-    transform:translateY(var(--toolbar-offset));
-    transition:none
+    background:rgba(244,243,239,.985);
+    border-bottom:1px solid var(--line);
+    transform:translate3d(0,0,0);
+    transition:none;
+    will-change:transform;
+    pointer-events:auto
   }
-  .catalog{overflow-anchor:none}
   .search input,.variant-search,.field input,.field textarea{font-size:16px!important}
 }
 
@@ -729,13 +732,10 @@ function filteredProducts(){
   return PRODUCTS.filter(p=>(categoryFilter==="TUTTI"||p.category===categoryFilter)&&(lineFilter==="TUTTE"||p.line===lineFilter)&&(!q||[p.name,p.id,p.line,p.category,p.subcategory,p.format].join(" ").toLocaleLowerCase("it").includes(q)));
 }
 function syncToolbarHeight(){
-  const shell=$("#toolbarShell");
-  const toolbar=shell?.querySelector(".toolbar");
-  if(!shell||!toolbar)return;
-  toolbarHeight=toolbar.scrollHeight;
-  shell.style.setProperty("--toolbar-expanded-height",toolbarHeight+"px");
-  shell.classList.add("is-measured");
-  if(mobileToolbarMedia.matches)applyToolbarProgress();
+  if(!toolbarShellEl||!toolbarEl)return;
+  toolbarShellEl.classList.add("is-measured");
+  toolbarHeight=toolbarEl.offsetHeight;
+  if(mobileToolbarMedia.matches)applyToolbarProgress(true);
 }
 function scrollToProductsTop(){
   const toolbar=$("#toolbarShell");
@@ -1048,18 +1048,31 @@ document.addEventListener("dblclick",e=>{
 const mobileToolbarMedia=matchMedia("(max-width: 699px)");
 const MOBILE_SCROLL_DEAD_ZONE=3;
 const TOOLBAR_GESTURE_GAP=140;
+const toolbarShellEl=$("#toolbarShell");
+const toolbarEl=toolbarShellEl?.querySelector(".toolbar");
+const catalogEl=$(".catalog");
 let lastY=Math.max(0,scrollY),desktopAcc=0,desktopLastDir=0,ticking=false;
 let toolbarHeight=0,toolbarProgress=0,toolbarDeadZoneRemaining=MOBILE_SCROLL_DEAD_ZONE;
 let toolbarLastDir=0,toolbarLastScrollTime=0,toolbarWasMobile=mobileToolbarMedia.matches;
-function applyToolbarProgress(){
-  const shell=$("#toolbarShell");
-  if(!shell||!toolbarHeight)return;
-  const visibleHeight=toolbarHeight*(1-toolbarProgress);
-  shell.style.setProperty("--toolbar-progress",toolbarProgress.toFixed(4));
-  shell.style.setProperty("--toolbar-visible-height",visibleHeight.toFixed(3)+"px");
-  shell.style.setProperty("--toolbar-offset",(-toolbarHeight*toolbarProgress).toFixed(3)+"px");
-  shell.style.setProperty("--toolbar-border-width",(1-toolbarProgress).toFixed(3)+"px");
-  shell.classList.toggle("is-hidden",toolbarProgress>=1)
+let toolbarAppliedTransform="",catalogAppliedTransform="";
+function applyToolbarProgress(force=false){
+  if(!toolbarShellEl||!toolbarEl||!catalogEl||!toolbarHeight)return;
+  const offset=(-toolbarHeight*toolbarProgress).toFixed(3)+"px";
+  const transform=`translate3d(0,${offset},0)`;
+  if(force||transform!==toolbarAppliedTransform){
+    toolbarEl.style.transform=transform;
+    toolbarAppliedTransform=transform
+  }
+  const catalogTransform=toolbarProgress>0&&toolbarProgress<1?transform:"";
+  if(force||catalogTransform!==catalogAppliedTransform){
+    if(catalogTransform)catalogEl.style.transform=catalogTransform;
+    else catalogEl.style.removeProperty("transform");
+    catalogAppliedTransform=catalogTransform
+  }
+  const hidden=toolbarProgress>=1;
+  if(toolbarShellEl.classList.contains("is-hidden")!==hidden){
+    toolbarShellEl.classList.toggle("is-hidden",hidden)
+  }
 }
 function setToolbarProgress(value){
   const next=Math.min(1,Math.max(0,value));
@@ -1074,14 +1087,13 @@ function resetToolbarGesture(){
   toolbarLastScrollTime=0
 }
 function setToolbarHidden(hidden){
-  const toolbar=$("#toolbarShell");
   if(mobileToolbarMedia.matches){
     const changed=setToolbarProgress(hidden?1:0);
     resetToolbarGesture();
     return changed
   }
-  if(!toolbar||toolbar.classList.contains("is-hidden")===hidden)return false;
-  toolbar.classList.toggle("is-hidden",hidden);
+  if(!toolbarShellEl||toolbarShellEl.classList.contains("is-hidden")===hidden)return false;
+  toolbarShellEl.classList.toggle("is-hidden",hidden);
   desktopAcc=0;
   desktopLastDir=0;
   return true;
@@ -1123,7 +1135,7 @@ function updateToolbar(){
     desktopLastDir=dir
   }
   desktopAcc+=Math.abs(d);
-  const toolbarHidden=$("#toolbarShell").classList.contains("is-hidden");
+  const toolbarHidden=toolbarShellEl.classList.contains("is-hidden");
   if(!toolbarHidden&&dir===1&&desktopAcc>32)setToolbarHidden(true);
   else if(toolbarHidden&&dir===-1&&desktopAcc>14)setToolbarHidden(false)
 }
@@ -1137,7 +1149,11 @@ addEventListener("resize",()=>{
     const mobile=mobileToolbarMedia.matches;
     if(mobile!==toolbarWasMobile){
       toolbarProgress=0;
-      $("#toolbarShell").classList.remove("is-hidden");
+      toolbarShellEl.classList.remove("is-hidden");
+      toolbarEl.style.removeProperty("transform");
+      catalogEl.style.removeProperty("transform");
+      toolbarAppliedTransform="";
+      catalogAppliedTransform="";
       toolbarWasMobile=mobile
     }
     syncToolbarHeight();
