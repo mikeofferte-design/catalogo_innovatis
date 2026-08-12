@@ -46,6 +46,7 @@ body.locked{overflow:hidden}
 }
 .toolbar-shell.is-hidden{transform:translateY(-101%)}
 .toolbar{max-width:1180px;margin:auto;padding:10px 12px 9px}
+.toolbar-spacer{display:none}
 .search-row{display:flex;gap:8px;align-items:center;margin-bottom:9px}
 .search{position:relative;flex:1}
 .search input{width:100%;height:38px;border:1px solid var(--line2);border-radius:11px;background:#fff;padding:0 12px;color:var(--ink);font-size:11px}
@@ -496,6 +497,7 @@ body.has-cart .catalog{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
 .close-btn{width:40px;height:40px;flex-basis:40px;touch-action:manipulation}
 @media(max-width:699px){
   .toolbar-shell.is-measured{
+    height:0;
     overflow:visible;
     transform:none;
     background:transparent;
@@ -504,17 +506,23 @@ body.has-cart .catalog{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
     pointer-events:none
   }
   .toolbar-shell.is-measured.is-hidden{
-    height:0;
     transform:none;
-    overflow:hidden
   }
   .toolbar-shell.is-measured .toolbar{
+    position:absolute;
+    top:0;
+    left:0;
+    right:0;
     background:rgba(244,243,239,.985);
     border-bottom:1px solid var(--line);
     transform:translate3d(0,0,0);
     transition:none;
     will-change:transform;
     pointer-events:auto
+  }
+  .toolbar-spacer.is-measured{
+    display:block;
+    height:var(--toolbar-height)
   }
   .search input,.variant-search,.field input,.field textarea{font-size:16px!important}
 }
@@ -542,6 +550,7 @@ body.has-cart .catalog{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
     <div class="filter-block"><div class="filter-label">Linea</div><div class="filters" id="lineFilters"></div></div>
   </div>
 </div>
+<div class="toolbar-spacer" id="toolbarSpacer" aria-hidden="true"></div>
 
 <main class="catalog"><div class="products" id="products"></div></main>
 
@@ -732,9 +741,13 @@ function filteredProducts(){
   return PRODUCTS.filter(p=>(categoryFilter==="TUTTI"||p.category===categoryFilter)&&(lineFilter==="TUTTE"||p.line===lineFilter)&&(!q||[p.name,p.id,p.line,p.category,p.subcategory,p.format].join(" ").toLocaleLowerCase("it").includes(q)));
 }
 function syncToolbarHeight(){
-  if(!toolbarShellEl||!toolbarEl)return;
+  if(!toolbarShellEl||!toolbarEl||!toolbarSpacerEl)return;
   toolbarShellEl.classList.add("is-measured");
   toolbarHeight=toolbarEl.offsetHeight;
+  toolbarSpacerEl.style.setProperty("--toolbar-height",toolbarHeight+"px");
+  toolbarSpacerEl.classList.add("is-measured");
+  const topbarHeight=$(".topbar")?.offsetHeight||0;
+  toolbarStickyStart=Math.max(0,toolbarSpacerEl.getBoundingClientRect().top+scrollY-topbarHeight);
   if(mobileToolbarMedia.matches)applyToolbarProgress(true);
 }
 function scrollToProductsTop(){
@@ -747,7 +760,7 @@ function scrollToProductsTop(){
   setToolbarHidden(false);
 
   requestAnimationFrame(()=>{
-    const stickyH=(topbar?.offsetHeight||0)+(toolbar?.offsetHeight||0)+8;
+    const stickyH=(topbar?.offsetHeight||0)+(mobileToolbarMedia.matches?toolbarHeight:(toolbar?.offsetHeight||0))+8;
     const absoluteTop=products.getBoundingClientRect().top+window.scrollY;
     window.scrollTo({
       top:Math.max(0,absoluteTop-stickyH),
@@ -1050,24 +1063,18 @@ const MOBILE_SCROLL_DEAD_ZONE=3;
 const TOOLBAR_GESTURE_GAP=140;
 const toolbarShellEl=$("#toolbarShell");
 const toolbarEl=toolbarShellEl?.querySelector(".toolbar");
-const catalogEl=$(".catalog");
+const toolbarSpacerEl=$("#toolbarSpacer");
 let lastY=Math.max(0,scrollY),desktopAcc=0,desktopLastDir=0,ticking=false;
-let toolbarHeight=0,toolbarProgress=0,toolbarDeadZoneRemaining=MOBILE_SCROLL_DEAD_ZONE;
+let toolbarHeight=0,toolbarStickyStart=0,toolbarProgress=0,toolbarDeadZoneRemaining=MOBILE_SCROLL_DEAD_ZONE;
 let toolbarLastDir=0,toolbarLastScrollTime=0,toolbarWasMobile=mobileToolbarMedia.matches;
-let toolbarAppliedTransform="",catalogAppliedTransform="";
+let toolbarAppliedTransform="";
 function applyToolbarProgress(force=false){
-  if(!toolbarShellEl||!toolbarEl||!catalogEl||!toolbarHeight)return;
+  if(!toolbarShellEl||!toolbarEl||!toolbarHeight)return;
   const offset=(-toolbarHeight*toolbarProgress).toFixed(3)+"px";
   const transform=`translate3d(0,${offset},0)`;
   if(force||transform!==toolbarAppliedTransform){
     toolbarEl.style.transform=transform;
     toolbarAppliedTransform=transform
-  }
-  const catalogTransform=toolbarProgress>0&&toolbarProgress<1?transform:"";
-  if(force||catalogTransform!==catalogAppliedTransform){
-    if(catalogTransform)catalogEl.style.transform=catalogTransform;
-    else catalogEl.style.removeProperty("transform");
-    catalogAppliedTransform=catalogTransform
   }
   const hidden=toolbarProgress>=1;
   if(toolbarShellEl.classList.contains("is-hidden")!==hidden){
@@ -1103,7 +1110,7 @@ function updateToolbar(){
   const y=Math.max(0,scrollY),d=y-lastY,mobile=mobileToolbarMedia.matches;
   lastY=y;
   if(mobile){
-    if(y<110){
+    if(y<toolbarStickyStart){
       setToolbarProgress(0);
       resetToolbarGesture();
       return
@@ -1151,9 +1158,7 @@ addEventListener("resize",()=>{
       toolbarProgress=0;
       toolbarShellEl.classList.remove("is-hidden");
       toolbarEl.style.removeProperty("transform");
-      catalogEl.style.removeProperty("transform");
       toolbarAppliedTransform="";
-      catalogAppliedTransform="";
       toolbarWasMobile=mobile
     }
     syncToolbarHeight();
